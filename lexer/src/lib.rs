@@ -1,6 +1,3 @@
-use std::iter::Peekable;
-use std::str::Chars;
-
 #[derive(PartialEq, Debug)]
 pub enum Token<'a> {
     Def,
@@ -10,6 +7,7 @@ pub enum Token<'a> {
     GroupL,
     GroupR,
     Separator,
+    Plus,
 }
 
 pub struct ParseTokenError();
@@ -54,6 +52,7 @@ impl<'a> Iterator for LexerIterator<'a> {
                 "(" => break Some(Token::GroupL),
                 ")" => break Some(Token::GroupR),
                 "," => break Some(Token::Separator),
+                "+" => break Some(Token::Plus),
                 " " | "\n" => {
                     self.start += 1;
                     offset -= 1;
@@ -137,6 +136,37 @@ mod tests {
                 Token::Identifier("y"),
                 Token::GroupR
             ],
+            output
+        )
+    }
+
+    #[test]
+    fn numbers() {
+        let input = "1 2 3 4";
+        let lexer = Lexer::new(input);
+
+        let output = lexer.iter().collect::<Vec<Token>>();
+
+        assert_eq!(
+            vec![
+                Token::Number(1.0),
+                Token::Number(2.0),
+                Token::Number(3.0),
+                Token::Number(4.0)
+            ],
+            output
+        )
+    }
+
+    #[test]
+    fn add_operator() {
+        let input = "1 + 1";
+        let lexer = Lexer::new(input);
+
+        let output = lexer.iter().collect::<Vec<Token>>();
+
+        assert_eq!(
+            vec![Token::Number(1.0), Token::Plus, Token::Number(1.0)],
             output
         )
     }

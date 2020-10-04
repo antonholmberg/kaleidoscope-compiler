@@ -20,7 +20,7 @@ Breaks a string into tokens.
 Converts the tokens provided by the _Lexer_ into a Abstract Syntax Tree
 (AST).
 
-**Status:** Not Started.
+**Status:** In Progress.
 
 ### Codegen
 
