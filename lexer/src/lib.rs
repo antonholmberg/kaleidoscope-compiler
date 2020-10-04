@@ -59,7 +59,7 @@ impl<'a> Iterator for LexerIterator<'a> {
                     continue;
                 }
                 _ => match next {
-                    Some(' ') | Some(')') | Some('(') | Some(',') | Some('\n') | None => {
+                    Some(' ') | Some(')') | Some('(') | Some(',') | Some('\n') | Some('+') | None => {
                         if current == "extern" {
                             break Some(Token::Extern);
                         }
@@ -161,6 +161,19 @@ mod tests {
     #[test]
     fn add_operator() {
         let input = "1 + 1";
+        let lexer = Lexer::new(input);
+
+        let output = lexer.iter().collect::<Vec<Token>>();
+
+        assert_eq!(
+            vec![Token::Number(1.0), Token::Plus, Token::Number(1.0)],
+            output
+        )
+    }
+
+    #[test]
+    fn add_operator_no_spaces() {
+        let input = "1+1";
         let lexer = Lexer::new(input);
 
         let output = lexer.iter().collect::<Vec<Token>>();
