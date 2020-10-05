@@ -59,7 +59,8 @@ impl<'a> Iterator for LexerIterator<'a> {
                     continue;
                 }
                 _ => match next {
-                    Some(' ') | Some(')') | Some('(') | Some(',') | Some('\n') | Some('+') | None => {
+                    Some(' ') | Some(')') | Some('(') | Some(',') | Some('\n') | Some('+')
+                    | None => {
                         if current == "extern" {
                             break Some(Token::Extern);
                         }
