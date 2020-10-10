@@ -2,29 +2,48 @@ mod variable_expr;
 
 use lexer::Token;
 use std::fmt::Debug;
-use std::rc::Rc;
+use std::iter::FromIterator;
 
-pub trait ExprAST<'a>: Debug {}
+pub trait ExprAST: Debug {}
 
-pub struct Parser<'a, 'b> {
-    source: &'b mut dyn Iterator<Item = Token<'a>>,
+#[derive(Debug)]
+struct RootAST {
+    children: Vec<Box<dyn ExprAST>>
 }
 
-impl<'a, 'b> Parser<'a, 'b> {
-    pub fn new(iter: &'b mut dyn Iterator<Item = Token<'a>>) -> Self {
-        Parser { source: iter }
+impl ExprAST for RootAST {}
+
+impl RootAST {
+    fn new() -> Self {
+        RootAST { children: Vec::new() }
+    }
+
+    fn add(&mut self, ast: Box<dyn ExprAST>) {
+        self.children.push(ast)
     }
 }
 
-impl<'a, 'b> Iterator for Parser<'a, 'b> {
-    type Item = Result<Rc<dyn ExprAST<'a> + 'a>, &'a str>;
-    fn next(&mut self) -> Option<Self::Item> {
-        let tokens = self.source.take(1).collect::<Vec<Token<'a>>>();
-        let ast = variable_expr::VariableExprAST::new(&tokens);
-        match ast {
-            Ok(ast) => Some(Ok(Rc::new(ast))),
-            _ => None,
+pub struct Parser {
+    source: Vec<Token>,
+}
+
+impl FromIterator<Token> for Parser {
+    fn from_iter<I: IntoIterator<Item=Token>>(iter: I) -> Self {
+        Parser { source: iter.into_iter().collect() }
+    }
+}
+
+impl Parser {
+    fn parse(self) -> impl ExprAST {
+        let mut root = RootAST::new();
+
+        for token in self.source {
+            if let Ok(ast) = variable_expr::VariableExprAST::new(&[token]) {
+                root.add(Box::new(ast));
+            }
         }
+
+        root
     }
 }
 
@@ -32,11 +51,18 @@ impl<'a, 'b> Iterator for Parser<'a, 'b> {
 mod tests {
     use super::Parser;
     use super::Token;
+    
+    use std::any::type_name;
+
+    fn type_of<T>(_: T) -> &'static str {
+            type_name::<T>()
+    }
+
     #[test]
     fn it_works() {
-        let mut input = vec![Token::Identifier("hello")].into_iter();
-        let mut parser = Parser::new(&mut input);
+        let input = vec![Token::Identifier("hello".to_string())].into_iter();
+        let parser = input.collect::<Parser>();
 
-        assert!(parser.next().map(|r| r.is_ok()).unwrap_or(false))
+        assert_eq!("parser::RootAST", type_of(parser.parse()))
     }
 }
