@@ -8,6 +8,7 @@ pub enum Token<'a> {
     GroupR,
     Separator,
     Plus,
+    Endl,
 }
 
 pub struct ParseTokenError();
@@ -50,7 +51,8 @@ impl<'a> Iterator for TokenIterator<'a> {
                     ")" => break Some(Token::GroupR),
                     "," => break Some(Token::Separator),
                     "+" => break Some(Token::Plus),
-                    " " | "\n" => {
+                    "\n" => break Some(Token::Endl),
+                    " " => {
                         self.from += 1;
                         continue;
                     }
@@ -179,6 +181,19 @@ mod tests {
 
         assert_eq!(
             vec![Token::Number(1.0), Token::Plus, Token::Number(1.0)],
+            output
+        )
+    }
+
+    #[test]
+    fn tokenized_new_lines() {
+        let input = "1\n1";
+        let lexer = Lexer::new(input);
+
+        let output = lexer.tokens().collect::<Vec<Token>>();
+
+        assert_eq!(
+            vec![Token::Number(1.0), Token::Endl, Token::Number(1.0)],
             output
         )
     }
