@@ -12,6 +12,12 @@ pub enum Operator {
 }
 
 #[derive(Debug, PartialEq)]
+pub struct FunctionPrototype<'a> {
+    name: &'a str,
+    argument_names: Vec<&'a str>,
+}
+
+#[derive(Debug, PartialEq)]
 pub enum Expr<'a> {
     Variable(&'a str),
     Number(f64),
@@ -24,6 +30,8 @@ pub enum Expr<'a> {
         callee: &'a str,
         arguments: Vec<Expr<'a>>,
     },
+    ExternalDefinition(FunctionPrototype<'a>),
+    FunctionDefinition(FunctionPrototype<'a>, Box<Expr<'a>>),
 }
 
 #[derive(Error, Debug, PartialEq)]
@@ -36,6 +44,10 @@ pub enum ParsingError<'a> {
     MissingRhsExpression,
     #[error("Internal parsing error")]
     InternalParsingError,
+    #[error("Missing argument separator")]
+    MissingArgumentSeparator,
+    #[error("Unexpected EOF")]
+    UnexpectedEof,
 }
 
 pub trait Parsable<'a, I: Iterator<Item = Token<'a>>> {
@@ -60,10 +72,11 @@ where
 {
     type Item = Result<Expr<'a>, ParsingError<'a>>;
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(_) = self.source_iterator.peek() {
-            Some(self.next_expression())
-        } else {
-            None
+        match self.source_iterator.peek() {
+            Some(Token::Extern) => Some(self.next_extern_definition()),
+            Some(Token::Def) => Some(self.next_function_definition()),
+            Some(_) => Some(self.next_expression()),
+            None => None,
         }
     }
 }
@@ -83,7 +96,7 @@ where
                     continue;
                 }
                 Some(token) => break Err(ParsingError::UnexpectedToken(token.clone())),
-                None => break Err(ParsingError::InternalParsingError),
+                None => break Err(ParsingError::UnexpectedEof),
             }
         };
     }
@@ -164,11 +177,72 @@ where
             return Err(ParsingError::InternalParsingError);
         }
     }
+
+    fn next_extern_definition(&mut self) -> Result<Expr<'a>, ParsingError<'a>> {
+        self.source_iterator.next();
+        Ok(Expr::ExternalDefinition(self.next_prototype_definition()?))
+    }
+
+    fn next_function_definition(&mut self) -> Result<Expr<'a>, ParsingError<'a>> {
+        self.source_iterator.next();
+        let prototype = self.next_prototype_definition()?;
+        let expression = self.next_expression()?;
+
+        Ok(Expr::FunctionDefinition(prototype, Box::new(expression)))
+    }
+
+    fn next_prototype_definition(&mut self) -> Result<FunctionPrototype<'a>, ParsingError<'a>> {
+        let token = self.source_iterator.next();
+        let parenthesis = self.source_iterator.next();
+        if let Some(Token::Identifier(ident)) = token {
+            if let Some(Token::GroupL) = parenthesis {
+                let mut arguments: Vec<&'a str> = Vec::new();
+                loop {
+                    let current = self.source_iterator.peek();
+                    match current {
+                        Some(Token::GroupR) => {
+                            self.source_iterator.next();
+                            break;
+                        }
+                        Some(Token::Identifier(ident)) => {
+                            arguments.push(ident);
+                            self.source_iterator.next();
+                            let next_token = self.source_iterator.next();
+                            match next_token {
+                                Some(Token::Separator) => continue,
+                                Some(Token::GroupR) => break,
+                                _ => return Err(ParsingError::MissingArgumentSeparator),
+                            }
+                        }
+                        Some(token) => {
+                            return Err(ParsingError::UnexpectedToken(token.clone()));
+                        }
+                        None => {
+                            return Err(ParsingError::UnmatchedParenthesis);
+                        }
+                    }
+                }
+
+                Ok(FunctionPrototype {
+                    name: ident,
+                    argument_names: arguments,
+                })
+            } else if let Some(tok) = parenthesis {
+                return Err(ParsingError::UnexpectedToken(tok));
+            } else {
+                return Err(ParsingError::InternalParsingError);
+            }
+        } else if let Some(tok) = token {
+            return Err(ParsingError::UnexpectedToken(tok));
+        } else {
+            return Err(ParsingError::InternalParsingError);
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Expr, Operator, Parsable, ParsingError, Token};
+    use super::{Expr, FunctionPrototype, Operator, Parsable, ParsingError, Token};
     use std::boxed::Box;
 
     #[test]
@@ -368,5 +442,168 @@ mod tests {
             }]),
             ast
         )
+    }
+
+    #[test]
+    fn parse_external_definition() {
+        let input = vec![
+            Token::Extern,
+            Token::Identifier("exit"),
+            Token::GroupL,
+            Token::GroupR,
+        ];
+
+        let ast = input
+            .parse_ast()
+            .collect::<Result<Vec<Expr>, ParsingError>>();
+
+        assert_eq!(
+            Ok(vec![Expr::ExternalDefinition(FunctionPrototype {
+                name: "exit",
+                argument_names: vec![]
+            })]),
+            ast
+        )
+    }
+
+    #[test]
+    fn parse_external_definition_with_arguments() {
+        let input = vec![
+            Token::Extern,
+            Token::Identifier("add"),
+            Token::GroupL,
+            Token::Identifier("x"),
+            Token::Separator,
+            Token::Identifier("y"),
+            Token::GroupR,
+        ];
+
+        let ast = input
+            .parse_ast()
+            .collect::<Result<Vec<Expr>, ParsingError>>();
+
+        assert_eq!(
+            Ok(vec![Expr::ExternalDefinition(FunctionPrototype {
+                name: "add",
+                argument_names: vec!["x", "y"]
+            })]),
+            ast
+        )
+    }
+
+    #[test]
+    fn parse_external_definition_with_arguments_requires_argument_separators() {
+        let input = vec![
+            Token::Extern,
+            Token::Identifier("add"),
+            Token::GroupL,
+            Token::Identifier("x"),
+            Token::Identifier("y"),
+            Token::GroupR,
+        ];
+
+        let ast = input
+            .parse_ast()
+            .collect::<Result<Vec<Expr>, ParsingError>>();
+
+        assert_eq!(Err(ParsingError::MissingArgumentSeparator), ast)
+    }
+
+    #[test]
+    fn parse_function_definition() {
+        let input = vec![
+            Token::Def,
+            Token::Identifier("foo"),
+            Token::GroupL,
+            Token::GroupR,
+            Token::Number(1.0),
+        ];
+
+        let ast = input
+            .parse_ast()
+            .collect::<Result<Vec<Expr>, ParsingError>>();
+
+        assert_eq!(
+            Ok(vec![Expr::FunctionDefinition(
+                FunctionPrototype {
+                    name: "foo",
+                    argument_names: vec![]
+                },
+                Box::new(Expr::Number(1.0))
+            )]),
+            ast
+        )
+    }
+
+    #[test]
+    fn parse_function_definition_with_arguments() {
+        let input = vec![
+            Token::Def,
+            Token::Identifier("add"),
+            Token::GroupL,
+            Token::Identifier("x"),
+            Token::Separator,
+            Token::Identifier("y"),
+            Token::GroupR,
+            Token::Identifier("x"),
+            Token::Plus,
+            Token::Identifier("y"),
+        ];
+
+        let ast = input
+            .parse_ast()
+            .collect::<Result<Vec<Expr>, ParsingError>>();
+
+        assert_eq!(
+            Ok(vec![Expr::FunctionDefinition(
+                FunctionPrototype {
+                    name: "add",
+                    argument_names: vec!["x", "y"]
+                },
+                Box::new(Expr::Binary {
+                    lhs: Box::new(Expr::Variable("x")),
+                    rhs: Box::new(Expr::Variable("y")),
+                    operator: Operator::Plus
+                })
+            )]),
+            ast
+        )
+    }
+
+    #[test]
+    fn parse_function_definition_with_arguments_requires_argument_separators() {
+        let input = vec![
+            Token::Def,
+            Token::Identifier("add"),
+            Token::GroupL,
+            Token::Identifier("x"),
+            Token::Identifier("y"),
+            Token::GroupR,
+            Token::Number(1.0),
+        ];
+
+        let ast = input
+            .parse_ast()
+            .collect::<Result<Vec<Expr>, ParsingError>>();
+
+        assert_eq!(Err(ParsingError::MissingArgumentSeparator), ast)
+    }
+    #[test]
+    fn parse_function_definition_requires_body() {
+        let input = vec![
+            Token::Def,
+            Token::Identifier("add"),
+            Token::GroupL,
+            Token::Identifier("x"),
+            Token::Separator,
+            Token::Identifier("y"),
+            Token::GroupR,
+        ];
+
+        let ast = input
+            .parse_ast()
+            .collect::<Result<Vec<Expr>, ParsingError>>();
+
+        assert_eq!(Err(ParsingError::UnexpectedEof), ast)
     }
 }
