@@ -3,4 +3,5 @@
 members = [
   "compiler",
   "parser",
+  "lexer",
 ]

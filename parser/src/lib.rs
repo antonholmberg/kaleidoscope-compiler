@@ -13,8 +13,8 @@ pub enum Operator {
 
 #[derive(Debug, PartialEq)]
 pub struct FunctionPrototype<'a> {
-    name: &'a str,
-    argument_names: Vec<&'a str>,
+    pub name: &'a str,
+    pub argument_names: Vec<&'a str>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -50,11 +50,11 @@ pub enum ParsingError<'a> {
     UnexpectedEof,
 }
 
-pub trait Parsable<'a, I: Iterator<Item = Token<'a>>> {
+pub trait IntoParsingIterator<'a, I: Iterator<Item = Token<'a>>> {
     fn parse_ast(self) -> ParsingIterator<'a, I>;
 }
 
-impl<'a, In: IntoIterator<Item = Token<'a>>> Parsable<'a, In::IntoIter> for In {
+impl<'a, In: IntoIterator<Item = Token<'a>>> IntoParsingIterator<'a, In::IntoIter> for In {
     fn parse_ast(self) -> ParsingIterator<'a, In::IntoIter> {
         ParsingIterator {
             source_iterator: self.into_iter().peekable(),
@@ -242,7 +242,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{Expr, FunctionPrototype, Operator, Parsable, ParsingError, Token};
+    use super::{Expr, FunctionPrototype, IntoParsingIterator, Operator, ParsingError, Token};
     use std::boxed::Box;
 
     #[test]
