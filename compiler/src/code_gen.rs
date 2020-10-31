@@ -24,6 +24,10 @@ impl<'a> GeneratedCode<'a> {
         self.0.write_bitcode_to_path(path);
     }
 
+    pub fn get_ir(&self) -> String {
+        self.0.print_to_string().to_string()
+    }
+
     pub fn execute_jit_main(&self) {
         let execution_engine = self
             .0
